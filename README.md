@@ -110,3 +110,8 @@ npm test
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. 
+
+## 💡 Inspiration
+
+This project was inspired by:
+- [docudigger](https://github.com/Disane87/docudigger)
