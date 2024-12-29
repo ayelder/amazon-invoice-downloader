@@ -1,6 +1,6 @@
 # Amazon Invoice Downloader 📄
 
-[![Node.js Version](https://img.shields.io/badge/node-%E2%89%A514-green](https://nodejs.org)
+[![Node.js Version](https://img.shields.io/badge/node-%E2%89%A514-green)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-blue.svg)](https://www.typescriptlang.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.42.1-brightgreen.svg)](https://playwright.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
