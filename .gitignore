@@ -1,0 +1,40 @@
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+yarn.lock
+package-lock.json
+
+# Logs
+*.log
+combined.log
+error.log
+
+# Downloads
+downloads/
+*.pdf
+
+# Environment and config
+.env
+.env.*
+config.json
+cookies.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
