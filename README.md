@@ -1,21 +1,25 @@
-# Amazon Invoice Downloader
+# Amazon Invoice Downloader 📄
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![Node.js Version](https://img.shields.io/node/v/amazon-invoice-downloader)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3.3-blue.svg)](https://www.typescriptlang.org/)
 
 An automated tool to bulk download Amazon order invoices for specified years.
 
-## Features
+## ✨ Features
 
 - Automated login to Amazon account
 - Bulk download of invoices for a specified year
 - Configurable download location
 - Command-line interface with flexible options
 
-## Prerequisites
+## 🔧 Prerequisites
 
 - Node.js (v14 or higher)
 - npm or yarn
 - System dependencies for Playwright (browser automation)
 
-## Installation
+## 📦 Installation
 
 1. Clone the repository:
 
@@ -77,13 +81,13 @@ Download to a custom location:
 npm start -- --email user@example.com --password mypassword --downloadPath /path/to/invoices
 ```
 
-## Security Notes
+## 🔒 Security Notes
 
 - Never commit your Amazon credentials to version control
 - Consider using environment variables for sensitive information
 - The tool runs a real browser instance, ensure you're in a secure environment
 
-## Development
+## 🛠️ Development
 
 1. Build the project:
 
@@ -97,30 +101,12 @@ npm run build
 npm test
 ```
 
-## License
+## Author
 
-MIT License
+👤 **Andrew Yelder**
+* GitHub: [@ayelder](https://github.com/ayelder)
+* LinkedIn: [@andrewyelder](https://linkedin.com/in/andrewyelder) 
 
-Copyright (c) 2024 Andrew Yelder
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-## Contributing
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request. 
