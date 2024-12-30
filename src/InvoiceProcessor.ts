@@ -29,7 +29,6 @@ export class InvoiceProcessor {
       
       // Get the text content
       const text = data.text;
-      console.log('PDF Text:', text); // Temporary debug logging
       
       // Extract order info first
       const orderId = this.extractOrderId(text);
