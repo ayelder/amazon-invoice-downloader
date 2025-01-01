@@ -2,6 +2,8 @@ import { Browser, BrowserContext, Page, chromium } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from './logger';
+import { InvoiceData, InvoiceProcessor, PaymentTransaction } from './InvoiceProcessor';
+import { TransactionReportGenerator } from './TransactionReportGenerator';
 
 interface DownloaderConfig {
   email: string;
@@ -10,11 +12,19 @@ interface DownloaderConfig {
   downloadPath: string;
 }
 
+interface TransactionWithOrder extends PaymentTransaction {
+  orderId: string;
+  orderType: 'amazon' | 'whole-foods' | 'amazon-fresh';
+}
+
 export class AmazonInvoiceDownloader {
   private static instance: AmazonInvoiceDownloader | null = null;
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  private invoiceProcessor: InvoiceProcessor;
+  private readonly reportGenerator: TransactionReportGenerator;
+  private yearlyTransactions: TransactionWithOrder[] = [];
 
   private static readonly DELAYS = {
     DEFAULT: {
@@ -32,6 +42,11 @@ export class AmazonInvoiceDownloader {
       fs.mkdirSync(config.downloadPath, { recursive: true });
     }
     this.setupCleanupHandlers();
+    this.invoiceProcessor = new InvoiceProcessor();
+    this.reportGenerator = new TransactionReportGenerator(
+      config.downloadPath,
+      config.year
+    );
   }
 
   public static async create(config: DownloaderConfig): Promise<AmazonInvoiceDownloader> {
@@ -68,8 +83,11 @@ export class AmazonInvoiceDownloader {
       await this.cleanup(false);
     } catch (error) {
       logger.error('Error during execution:', error);
-      logger.info('Keeping browser open due to error');
-      throw error;
+      logger.info('Keeping browser open for debugging');
+      // Keep process alive and browser open
+      await new Promise(() => {
+        logger.info('Process kept alive for debugging. Press Ctrl+C to exit.');
+      });
     }
   }
 
@@ -107,28 +125,17 @@ export class AmazonInvoiceDownloader {
       this.page!.click('#signInSubmit'),
       // Wait for either navigation or CAPTCHA
       Promise.race([
-        this.page!.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        this.page!.waitForSelector('#auth-captcha-image', { timeout: 5000 }).catch(() => null)
+        this.page!.waitForSelector('#nav-orders', { timeout: 5000 }),
+        this.page!.waitForSelector('img[alt="captcha" i]', { timeout: 5000 }).catch(() => null)
       ])
     ]);
 
     // Check for CAPTCHA
-    const hasCaptcha = await this.page!.isVisible('#auth-captcha-image');
+    const hasCaptcha = await this.page!.isVisible('img[alt="captcha" i]');
     if (hasCaptcha) {
       logger.warn('CAPTCHA detected! Please solve the CAPTCHA manually.');
-      // Wait for successful navigation after CAPTCHA
-      await Promise.race([
-        // Wait for successful navigation to Amazon home
-        this.page!.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        // Or wait for nav menu to appear
-        this.page!.waitForSelector('#nav-belt', { timeout: 60000 })
-      ]);
-    }
-
-    // Verify successful login
-    const isLoggedIn = await this.page!.isVisible('#nav-link-accountList');
-    if (!isLoggedIn) {
-      throw new Error('Login failed - unable to verify successful login');
+      // Wait for successful navigation after CAPTCHA, give sufficient time for the user to solve the CAPTCHA
+      await this.page!.waitForSelector('#nav-orders', { timeout: 300000 });
     }
 
     logger.info('Login completed successfully');
@@ -178,11 +185,11 @@ export class AmazonInvoiceDownloader {
 
   private async downloadInvoices(): Promise<void> {
     logger.info('Starting invoice download process');
-    let totalProcessed = 0;
+    let totalDownloaded = 0;
     let totalSkipped = 0;
     let pageNum = 1;
 
-    // Create year subfolder
+    // Create year directory if it doesn't exist
     const yearPath = path.join(this.config.downloadPath, this.config.year.toString());
     if (!fs.existsSync(yearPath)) {
       fs.mkdirSync(yearPath, { recursive: true });
@@ -195,24 +202,25 @@ export class AmazonInvoiceDownloader {
 
       for (const orderElement of orderElements) {
         try {
+          // Find invoice link by class and text content
+          const invoiceLink = await orderElement.$('a.a-link-normal:has-text("View Invoice")');
+          if (!invoiceLink) continue; // Skip if no invoice available
+
           // Extract order ID from the order card
           const orderId = await orderElement.$eval(
             'div[class*="order-id"]',
             el => {
               const text = el.textContent || '';
               const match = text.match(/(?:Order|#)\s*([A-Z0-9-]+)/i);
-              if (!match) {
-                logger.warn(`Found order ID element but couldn't parse ID from text: "${text}"`);
-                return `unknown-${Date.now()}`;
-              }
-              return match[1];
+              return match ? match[1] : null;
             }
-          ).catch(() => {
-            logger.warn('No order ID element found in order card');
-            return `unknown-${Date.now()}`;
-          });
+          );
+          if (!orderId) {
+            logger.warn('Could not extract order ID, skipping');
+            continue;
+          }
 
-          // Check if this is a Whole Foods or Amazon Fresh order
+          // Determine order type for filename
           const isWholeFood = await orderElement.$('img[alt*="Whole Foods"]')
             .then(element => !!element)
             .catch(() => false);
@@ -221,43 +229,23 @@ export class AmazonInvoiceDownloader {
             .then(element => !!element)
             .catch(() => false);
 
-          // Determine order type for filename
           let orderType = 'amazon';
           if (isWholeFood) orderType = 'whole-foods';
           if (isAmazonFresh) orderType = 'amazon-fresh';
 
-          // Check if invoice already exists
-          const expectedFilename = path.join(
-            yearPath,
-            `${orderType}-invoice-${orderId}.pdf`
-          );
-          
+          const expectedFilename = path.join(yearPath, `${orderType}-invoice-${orderId}.pdf`);
+
+          // Process existing invoice or download new one
           if (fs.existsSync(expectedFilename)) {
-            logger.info(`Skipping existing invoice for order ${orderId}`);
+            logger.info(`Skipping download for existing invoice ${orderId} (${orderType})`);
             totalSkipped++;
-            continue;
-          }
-
-          // Find invoice link by class and text content
-          const invoiceLink = await orderElement.$('a.a-link-normal:has-text("View Invoice")');
-          if (invoiceLink) {
-            logger.info(`Processing ${orderType} invoice for order ${orderId}`);
-            
-            // Get the href attribute from the invoice link
-            const invoiceUrl = await invoiceLink.getAttribute('href');
-            if (!invoiceUrl) {
-              throw new Error('Invoice URL not found');
-            }
-
-            // Create a new page for the invoice
+          } else {
+            logger.info(`Downloading invoice for order ${orderId} (${orderType})`);
             const invoicePage = await this.context!.newPage();
             try {
-              // Navigate to invoice URL and wait for content to load
-              await invoicePage.goto(`https://www.amazon.com${invoiceUrl}`, {
-                waitUntil: 'domcontentloaded'
-              });
-
-              // Save the page as PDF
+              const invoiceUrl = await invoiceLink.getAttribute('href');
+              await invoicePage.goto(`https://www.amazon.com${invoiceUrl}`);
+              
               await invoicePage.pdf({
                 path: expectedFilename,
                 format: 'A4',
@@ -269,40 +257,40 @@ export class AmazonInvoiceDownloader {
                   left: '20px'
                 }
               });
-
-              logger.info(`Successfully saved ${orderType} invoice for order ${orderId}`);
+              totalDownloaded++;
             } finally {
-              // Always close the invoice page
               await invoicePage.close();
             }
-            
-            totalProcessed++;
+
+            // Add random delay between downloads
+            const delay = this.getRandomDelay();
+            logger.debug(`Waiting ${delay}ms before next order`);
+            await this.page!.waitForTimeout(delay);
           }
 
-          // Add random delay between orders
-          const delay = this.getRandomDelay();
-          logger.debug(`Waiting ${delay}ms before next order`);
-          await this.page!.waitForTimeout(delay);
+          // Process the invoice data for the report
+          logger.info(`Processing invoice data for order ${orderId} (${orderType})`);
+          const data = await this.invoiceProcessor.extractInvoiceData(expectedFilename);
+          this.addTransactionsFromInvoice(data);
 
         } catch (error) {
-          logger.error('Error downloading invoice:', error);
+          logger.error(`Error processing invoice:`, error);
         }
       }
 
-      // Check and handle pagination
       if (await this.hasNextPage()) {
         await this.goToNextPage();
         pageNum++;
-      } else {
-        break;
       }
+    } while (await this.hasNextPage());
 
-    } while (true);
+    // Generate the yearly transaction report
+    await this.generateTransactionReport();
     
     logger.info(
-      `Invoice download process completed. ` +
-      `Processed ${totalProcessed} orders, skipped ${totalSkipped} existing invoices ` +
-      `across ${pageNum} pages.`
+      `Process completed. Downloaded ${totalDownloaded} new invoices, ` +
+      `skipped ${totalSkipped} existing invoices across ${pageNum - 1} pages. ` +
+      `Found ${this.yearlyTransactions.length} total transactions.`
     );
   }
 
@@ -321,5 +309,18 @@ export class AmazonInvoiceDownloader {
     } catch (error) {
       logger.error('Error during cleanup:', error);
     }
+  }
+
+  private addTransactionsFromInvoice(data: InvoiceData): void {
+    const transactionsWithOrder = data.payments.map(payment => ({
+      ...payment,
+      orderId: data.orderId,
+      orderType: data.orderType
+    }));
+    this.yearlyTransactions.push(...transactionsWithOrder);
+  }
+
+  private async generateTransactionReport(): Promise<void> {
+    await this.reportGenerator.generateReport(this.yearlyTransactions);
   }
 } 
